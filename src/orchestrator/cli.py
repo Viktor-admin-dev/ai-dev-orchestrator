@@ -38,12 +38,19 @@ app = typer.Typer(
 DB_PATH = Path(".orchestrator/state.db")
 
 
-def _load_orchestrator_from_db() -> ProjectOrchestrator:  # noqa: F821
-    """Load orchestrator state from SQLite."""
-    from unittest.mock import AsyncMock
+def _load_orchestrator_from_db(
+    *,
+    real_executors: bool = False,
+) -> ProjectOrchestrator:  # noqa: F821
+    """Load orchestrator state from SQLite.
 
+    Args:
+        real_executors: If True, instantiate DeveloperExecutor and
+            AuditorExecutor backed by Claude Agent SDK.  Default is
+            False — lightweight AsyncMock stubs for read-only CLI
+            commands that never invoke agent work.
+    """
     from orchestrator.config import ProjectConfig
-    from orchestrator.executor.base import ExecutorAdapter
     from orchestrator.store import load_orchestrator
 
     if not DB_PATH.exists():
@@ -56,9 +63,19 @@ def _load_orchestrator_from_db() -> ProjectOrchestrator:  # noqa: F821
     else:
         config = ProjectConfig()
 
-    # Use mock executors for CLI inspection; real executors are used in `run`
-    developer = AsyncMock(spec=ExecutorAdapter)
-    auditor = AsyncMock(spec=ExecutorAdapter)
+    if real_executors:
+        from orchestrator.executor.auditor import AuditorExecutor
+        from orchestrator.executor.developer import DeveloperExecutor
+
+        developer = DeveloperExecutor(config)
+        auditor = AuditorExecutor(config)
+    else:
+        from unittest.mock import AsyncMock
+
+        from orchestrator.executor.base import ExecutorAdapter
+
+        developer = AsyncMock(spec=ExecutorAdapter)
+        auditor = AsyncMock(spec=ExecutorAdapter)
 
     return load_orchestrator(DB_PATH, config, developer, auditor)
 
@@ -300,7 +317,7 @@ def run(
         typer.echo("No database found. Run 'orchestrator init' first.", err=True)
         raise typer.Exit(1)
 
-    orch = _load_orchestrator_from_db()
+    orch = _load_orchestrator_from_db(real_executors=True)
     result = asyncio.run(run_loop(orch, DB_PATH, auto_approve=auto_approve))
 
     # Save final state
