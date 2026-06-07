@@ -37,6 +37,11 @@ class TaskRunner:
     fsm: TaskCycleFSM = field(default_factory=TaskCycleFSM)
     _tasks: dict[str, TaskContext] = field(default_factory=dict, repr=False)
 
+    @property
+    def task_ids(self) -> set[str]:
+        """Return the set of all task IDs."""
+        return set(self._tasks)
+
     def create_task(
         self,
         task_id: str,
