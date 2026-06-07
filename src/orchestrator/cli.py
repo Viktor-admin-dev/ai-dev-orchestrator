@@ -58,10 +58,7 @@ def _load_orchestrator_from_db(
         raise typer.Exit(1)
 
     config_path = Path("orchestrator.yaml")
-    if config_path.exists():
-        config = ProjectConfig.from_yaml(config_path.read_text())
-    else:
-        config = ProjectConfig()
+    config = ProjectConfig.from_yaml(config_path) if config_path.exists() else ProjectConfig()
 
     if real_executors:
         from orchestrator.executor.auditor import AuditorExecutor
