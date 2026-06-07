@@ -82,9 +82,7 @@ class TaskCycleFSM:
         """Return the set of states reachable from the current state."""
         return set(_TRANSITIONS.get(ctx.state, set()))
 
-    def can_transition(
-        self, ctx: TaskContext, target: TaskState
-    ) -> tuple[bool, str]:
+    def can_transition(self, ctx: TaskContext, target: TaskState) -> tuple[bool, str]:
         """Check whether a transition is allowed, returning (ok, reason)."""
         allowed = _TRANSITIONS.get(ctx.state, set())
 
@@ -146,9 +144,7 @@ class TaskCycleFSM:
 
         return True, "ok"
 
-    def transition(
-        self, ctx: TaskContext, target: TaskState, reason: str = ""
-    ) -> TaskContext:
+    def transition(self, ctx: TaskContext, target: TaskState, reason: str = "") -> TaskContext:
         """Execute a state transition, mutating ctx in-place and returning it.
 
         Raises InvalidTransitionError if the transition is not allowed.

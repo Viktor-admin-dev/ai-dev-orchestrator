@@ -209,9 +209,7 @@ class TestMutationResults:
             task_id="T-001",
             diff="d",
             criteria="c",
-            mutation_results=MutationResults(
-                total_mutants=10, killed=9, survived=1, timeout=0
-            ),
+            mutation_results=MutationResults(total_mutants=10, killed=9, survived=1, timeout=0),
         )
         import json
 
@@ -220,9 +218,7 @@ class TestMutationResults:
         assert data["mutation_results"]["killed"] == 9
 
     def test_plan_field_in_json(self) -> None:
-        ep = EvidencePack(
-            task_id="T-001", diff="d", criteria="c", plan="Step 1: do X"
-        )
+        ep = EvidencePack(task_id="T-001", diff="d", criteria="c", plan="Step 1: do X")
         import json
 
         data = json.loads(ep.to_json())

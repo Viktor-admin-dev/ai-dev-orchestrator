@@ -63,9 +63,7 @@ class TaskRunner:
             raise KeyError(f"Task {task_id} not found")
         return self._tasks[task_id]
 
-    def submit_plan(
-        self, task_id: str, plan: str, criteria: str
-    ) -> TaskContext:
+    def submit_plan(self, task_id: str, plan: str, criteria: str) -> TaskContext:
         """Submit a plan for review: DRAFT → PLAN_REVIEW."""
         ctx = self.get_task(task_id)
         ctx.plan = plan
@@ -114,9 +112,7 @@ class TaskRunner:
 
         return ctx
 
-    async def run_tests(
-        self, task_id: str, test_results: TestResults
-    ) -> TaskContext:
+    async def run_tests(self, task_id: str, test_results: TestResults) -> TaskContext:
         """Process test results: TESTING → AWAIT_AUDIT or REWORK.
 
         The caller runs tests externally and passes TestResults.
@@ -184,9 +180,7 @@ class TaskRunner:
 
         return ctx
 
-    async def run_mutation(
-        self, task_id: str, mutation_results: MutationResults
-    ) -> TaskContext:
+    async def run_mutation(self, task_id: str, mutation_results: MutationResults) -> TaskContext:
         """Process mutation results: MUTATION → PR_READY or REWORK.
 
         The caller runs mutation testing externally and passes MutationResults.

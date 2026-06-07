@@ -45,9 +45,7 @@ def _approve_verdict() -> AuditorVerdict:
 
 
 def _request_changes_verdict() -> AuditorVerdict:
-    return AuditorVerdict(
-        verdict=AuditVerdict.REQUEST_CHANGES, reasoning="Fix naming"
-    )
+    return AuditorVerdict(verdict=AuditVerdict.REQUEST_CHANGES, reasoning="Fix naming")
 
 
 def _reject_verdict() -> AuditorVerdict:

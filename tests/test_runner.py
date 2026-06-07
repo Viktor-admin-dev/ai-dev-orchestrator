@@ -63,12 +63,8 @@ def _mock_executor(result: ExecutionResult | None = None) -> ExecutorAdapter:
 def _runner(**kwargs: object) -> TaskRunner:
     defaults: dict[str, object] = {
         "config": _config(),
-        "developer": _mock_executor(
-            _success_result(output="+added code")
-        ),
-        "auditor": _mock_executor(
-            _success_result(output="verdict: approve\nAll good")
-        ),
+        "developer": _mock_executor(_success_result(output="+added code")),
+        "auditor": _mock_executor(_success_result(output="verdict: approve\nAll good")),
     }
     defaults.update(kwargs)
     return TaskRunner(**defaults)  # type: ignore[arg-type]
@@ -136,9 +132,7 @@ class TestReworkLoop:
         assert r.get_task("T-001").state is TaskState.REWORK
 
     async def test_rework_on_request_changes(self) -> None:
-        auditor = _mock_executor(
-            _success_result(output="verdict: request-changes\nFix naming")
-        )
+        auditor = _mock_executor(_success_result(output="verdict: request-changes\nFix naming"))
         r = _runner(auditor=auditor)
         r.create_task("T-001")
         r.submit_plan("T-001", "P", "C")
@@ -151,9 +145,7 @@ class TestReworkLoop:
 
     async def test_rework_then_retry(self) -> None:
         """REWORK → IN_PROGRESS increments attempt."""
-        auditor = _mock_executor(
-            _success_result(output="verdict: request-changes\nFix it")
-        )
+        auditor = _mock_executor(_success_result(output="verdict: request-changes\nFix it"))
         r = _runner(auditor=auditor)
         r.create_task("T-001")
         r.submit_plan("T-001", "P", "C")
@@ -173,9 +165,7 @@ class TestReworkLoop:
 
 class TestFailurePaths:
     async def test_reject_goes_to_failed(self) -> None:
-        auditor = _mock_executor(
-            _success_result(output="verdict: reject\nFundamental flaw")
-        )
+        auditor = _mock_executor(_success_result(output="verdict: reject\nFundamental flaw"))
         r = _runner(auditor=auditor)
         r.create_task("T-001")
         r.submit_plan("T-001", "P", "C")
