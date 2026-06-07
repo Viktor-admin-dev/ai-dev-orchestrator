@@ -15,7 +15,11 @@ dependencies = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/orchestrator"]
 
+[project.scripts]
+orchestrator = "orchestrator.cli:app"
+
 [project.optional-dependencies]
+panel = ["rich>=13.0", "typer>=0.9"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -23,6 +27,8 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "types-PyYAML>=6.0",
+    "rich>=13.0",
+    "typer>=0.9",
 ]
 
 [tool.ruff]

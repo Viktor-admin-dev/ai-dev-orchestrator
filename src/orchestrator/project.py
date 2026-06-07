@@ -31,6 +31,11 @@ class ProjectOrchestrator:
     stage_fsm: StageFSM = field(default_factory=StageFSM)
     _stages: dict[str, StageContext] = field(default_factory=dict, repr=False)
 
+    @property
+    def stage_ids(self) -> set[str]:
+        """Return the set of all stage IDs."""
+        return set(self._stages)
+
     def create_stage(
         self,
         stage_id: str,
