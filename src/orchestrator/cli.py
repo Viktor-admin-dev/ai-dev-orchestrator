@@ -3,6 +3,8 @@
 Usage:
     orchestrator init                       — create .orchestrator/state.db
     orchestrator run [--auto-approve]       — start/resume the runner loop
+    orchestrator add-task T-001 [options]   — add a task to the database
+    orchestrator add-stage S1 "Name" [opt]  — add a stage to the database
     orchestrator approve-plan <task_id>     — approve a task plan
     orchestrator reject-plan <task_id>      — reject a task plan
     orchestrator accept-task <task_id>      — accept a merged task
@@ -192,6 +194,96 @@ def init() -> None:
         return
     init_db(DB_PATH)
     typer.echo(f"Initialized database at {DB_PATH}")
+
+
+@app.command("add-task")
+def add_task(
+    task_id: Annotated[str, typer.Argument(help="Task ID (e.g., T-001)")],
+    plan: Annotated[str, typer.Option(help="Task plan")] = "",
+    criteria: Annotated[str, typer.Option(help="Acceptance criteria")] = "",
+    stage: Annotated[str, typer.Option(help="Stage ID to assign")] = "",
+    budget: Annotated[float, typer.Option(help="Budget in USD")] = 5.0,
+    critical: Annotated[
+        bool, typer.Option("--critical", help="Mark as touching critical code")
+    ] = False,
+    depends_on: Annotated[
+        list[str] | None, typer.Option("--depends-on", help="Dependency task IDs")
+    ] = None,
+) -> None:
+    """Add a task to the database."""
+    from orchestrator.graph import TaskNode
+    from orchestrator.store import get_connection, save_graph_node, save_task
+
+    orch = _load_orchestrator_from_db()
+    deps = depends_on or []
+
+    # Check for duplicate
+    if task_id in orch.runner.task_ids:
+        typer.echo(f"Task '{task_id}' already exists", err=True)
+        raise typer.Exit(1)
+
+    ctx = orch.runner.create_task(task_id, budget_usd=budget, touches_critical=critical)
+    if plan:
+        ctx.plan = plan
+    if criteria:
+        ctx.criteria = criteria
+
+    node = TaskNode(task_id=task_id, stage_id=stage, dependencies=frozenset(deps))
+    orch.graph.add_task(node)
+
+    conn = get_connection(DB_PATH)
+    try:
+        save_task(conn, ctx)
+        save_graph_node(conn, node)
+    finally:
+        conn.close()
+
+    typer.echo(f"Task {task_id} added (state=DRAFT, budget=${budget:.2f})")
+
+
+@app.command("add-stage")
+def add_stage(
+    stage_id: Annotated[str, typer.Argument(help="Stage ID (e.g., S1)")],
+    name: Annotated[str, typer.Argument(help="Stage name")],
+    task: Annotated[list[str] | None, typer.Option("--task", help="Task IDs to include")] = None,
+    budget: Annotated[float, typer.Option(help="Budget in USD")] = 100.0,
+) -> None:
+    """Add a stage to the database."""
+    from orchestrator.graph import TaskNode
+    from orchestrator.store import get_connection, save_graph_node, save_stage
+
+    orch = _load_orchestrator_from_db()
+    task_ids = task or []
+
+    # Check for duplicate
+    if stage_id in orch.stage_ids:
+        typer.echo(f"Stage '{stage_id}' already exists", err=True)
+        raise typer.Exit(1)
+
+    # Verify all referenced tasks exist
+    for tid in task_ids:
+        if tid not in orch.runner.task_ids:
+            typer.echo(f"Task '{tid}' not found", err=True)
+            raise typer.Exit(1)
+
+    stage_ctx = orch.create_stage(stage_id, name, task_ids, budget_usd=budget)
+
+    conn = get_connection(DB_PATH)
+    try:
+        save_stage(conn, stage_ctx)
+        # Update graph nodes with stage_id
+        for tid in task_ids:
+            node = orch.graph.get_task(tid)
+            updated = TaskNode(
+                task_id=node.task_id,
+                dependencies=node.dependencies,
+                stage_id=stage_id,
+            )
+            save_graph_node(conn, updated)
+    finally:
+        conn.close()
+
+    typer.echo(f"Stage {stage_id} '{name}' added ({len(task_ids)} tasks, budget=${budget:.2f})")
 
 
 @app.command()
