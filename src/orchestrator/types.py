@@ -40,6 +40,18 @@ class TaskState(Enum):
 
 
 @unique
+class StageState(Enum):
+    """Stage lifecycle state for project-level orchestration."""
+
+    PLANNING = "planning"
+    IN_PROGRESS = "in_progress"
+    INTEGRATING = "integrating"
+    REVIEW = "review"
+    ACCEPTED = "accepted"
+    FAILED = "failed"
+
+
+@unique
 class ModelId(Enum):
     """Supported Claude model identifiers."""
 
