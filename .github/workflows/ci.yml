@@ -40,4 +40,11 @@ jobs:
         run: mypy src/
 
       - name: Test (pytest)
-        run: pytest --cov=orchestrator --cov-report=term-missing --cov-fail-under=60
+        run: pytest --cov=orchestrator --cov-report=term-missing
+
+      - name: Coverage — business logic (≥80%)
+        run: |
+          coverage report --include="src/orchestrator/state_machine.py,src/orchestrator/stage.py,src/orchestrator/evidence.py,src/orchestrator/cost.py,src/orchestrator/runner.py,src/orchestrator/graph.py,src/orchestrator/executor/*.py,src/orchestrator/config.py,src/orchestrator/types.py" --fail-under=80
+
+      - name: Coverage — overall (≥60%)
+        run: coverage report --fail-under=60

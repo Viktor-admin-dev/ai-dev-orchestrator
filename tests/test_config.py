@@ -14,7 +14,7 @@ from orchestrator.config import (
     ModelsConfig,
     ProjectConfig,
 )
-from orchestrator.types import AuditVerdict, ModelId, Phase
+from orchestrator.types import AuditVerdict, ModelId, Phase, vendor_from_model
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -79,8 +79,10 @@ class TestBudgetsConfig:
 class TestModelsConfig:
     def test_defaults(self) -> None:
         m = ModelsConfig()
-        assert m.developer is ModelId.SONNET
-        assert m.auditor is ModelId.OPUS
+        assert m.developer == "claude-sonnet-4-6"
+        assert m.developer_critical == "claude-opus-4-8"
+        assert m.auditor == "google/gemini-3.1-pro-preview"
+        assert m.auditor_gateway == "openrouter"
 
 
 # ── ProjectConfig ──
@@ -127,8 +129,10 @@ class TestProjectConfig:
                     "per_project_usd": 50.0,
                 },
                 "models": {
-                    "developer": "claude-sonnet-4-5",
-                    "auditor": "claude-opus-4-6",
+                    "developer": "claude-sonnet-4-6",
+                    "developer_critical": "claude-opus-4-8",
+                    "auditor": "google/gemini-3.1-pro-preview",
+                    "auditor_gateway": "openrouter",
                 },
                 "critical_modules": ["auth", "billing"],
             }
@@ -140,7 +144,9 @@ class TestProjectConfig:
         assert cfg.docs.spec == "SPEC.md"
         assert cfg.commands.test == "pytest"
         assert cfg.budgets.per_task_usd == 2.0
-        assert cfg.models.developer is ModelId.SONNET
+        assert cfg.models.developer == "claude-sonnet-4-6"
+        assert cfg.models.auditor == "google/gemini-3.1-pro-preview"
+        assert cfg.models.auditor_gateway == "openrouter"
         assert cfg.critical_modules == ("auth", "billing")
 
     def test_from_yaml(self, tmp_path: Path) -> None:
@@ -171,3 +177,92 @@ class TestProjectConfig:
         cfg = ProjectConfig.from_dict(data)
         assert cfg.repo == "/direct"
         assert cfg.phase is Phase.MVP
+
+    def test_from_dict_backward_compat_no_gateway(self) -> None:
+        """Old-style config without gateway fields still works."""
+        data = {
+            "models": {
+                "developer": "claude-sonnet-4-5",
+                "auditor": "claude-opus-4-6",
+            }
+        }
+        cfg = ProjectConfig.from_dict(data)
+        assert cfg.models.developer == "claude-sonnet-4-5"
+        assert cfg.models.auditor == "claude-opus-4-6"
+        assert cfg.models.auditor_gateway == "openrouter"  # default
+
+    def test_from_yaml_new_format(self, tmp_path: Path) -> None:
+        yaml_content = textwrap.dedent("""\
+            target_project:
+              repo: /tmp/test
+              models:
+                developer: claude-sonnet-4-6
+                developer_critical: claude-opus-4-8
+                auditor: google/gemini-3.1-pro-preview
+                auditor_gateway: openrouter
+        """)
+        p = tmp_path / "new_config.yaml"
+        p.write_text(yaml_content)
+        cfg = ProjectConfig.from_yaml(p)
+        assert cfg.models.developer == "claude-sonnet-4-6"
+        assert cfg.models.developer_critical == "claude-opus-4-8"
+        assert cfg.models.auditor == "google/gemini-3.1-pro-preview"
+        assert cfg.models.auditor_gateway == "openrouter"
+
+
+# ── vendor_from_model ──
+
+
+class TestVendorFromModel:
+    def test_openrouter_format(self) -> None:
+        assert vendor_from_model("google/gemini-3.1-pro-preview") == "google"
+
+    def test_anthropic_openrouter(self) -> None:
+        assert vendor_from_model("anthropic/claude-sonnet-4.6") == "anthropic"
+
+    def test_bare_claude_id(self) -> None:
+        assert vendor_from_model("claude-sonnet-4-6") == "anthropic"
+
+    def test_unknown(self) -> None:
+        assert vendor_from_model("llama-3") == "unknown"
+
+
+# ── check_vendor_independence ──
+
+
+class TestVendorIndependence:
+    def test_different_vendors_ok(self) -> None:
+        cfg = ProjectConfig.from_dict(
+            {
+                "models": {
+                    "developer": "claude-sonnet-4-6",
+                    "auditor": "google/gemini-3.1-pro-preview",
+                }
+            }
+        )
+        assert cfg.check_vendor_independence() == []
+
+    def test_same_vendor_warns(self) -> None:
+        cfg = ProjectConfig.from_dict(
+            {
+                "models": {
+                    "developer": "claude-sonnet-4-6",
+                    "auditor": "claude-opus-4-6",
+                }
+            }
+        )
+        warnings = cfg.check_vendor_independence()
+        assert len(warnings) == 1
+        assert "anthropic" in warnings[0]
+
+    def test_same_vendor_openrouter_format(self) -> None:
+        cfg = ProjectConfig.from_dict(
+            {
+                "models": {
+                    "developer": "anthropic/claude-sonnet-4.6",
+                    "auditor": "anthropic/claude-opus-4.8",
+                }
+            }
+        )
+        warnings = cfg.check_vendor_independence()
+        assert len(warnings) == 1
