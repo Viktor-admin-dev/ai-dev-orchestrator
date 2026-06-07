@@ -8,8 +8,8 @@ from orchestrator.cost import CostTracker
 from orchestrator.evidence import TestResults
 from orchestrator.stage import (
     InvalidStageTransitionError,
-    StageFSM,
     StageContext,
+    StageFSM,
     StageTransition,
 )
 from orchestrator.types import StageState

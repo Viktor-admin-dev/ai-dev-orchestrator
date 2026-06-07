@@ -6,13 +6,10 @@ import pytest
 
 from orchestrator.graph import CycleError, TaskGraph, TaskNode
 
-
 # ── Helpers ──
 
 
-def _node(
-    task_id: str, deps: set[str] | None = None, stage_id: str = ""
-) -> TaskNode:
+def _node(task_id: str, deps: set[str] | None = None, stage_id: str = "") -> TaskNode:
     return TaskNode(
         task_id=task_id,
         dependencies=frozenset(deps or set()),

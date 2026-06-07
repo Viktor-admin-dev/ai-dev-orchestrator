@@ -9,7 +9,7 @@ import pytest
 from orchestrator.config import BudgetsConfig, ProjectConfig
 from orchestrator.evidence import TestResults
 from orchestrator.executor.base import ExecutionResult, ExecutorAdapter
-from orchestrator.graph import TaskGraph, TaskNode
+from orchestrator.graph import TaskNode
 from orchestrator.project import ProjectOrchestrator
 from orchestrator.runner import TaskRunner
 from orchestrator.stage import InvalidStageTransitionError
@@ -22,7 +22,9 @@ def _config() -> ProjectConfig:
     return ProjectConfig(budgets=BudgetsConfig(per_task_usd=5.0))
 
 
-def _success_result(task_id: str = "T-001", output: str = "verdict: approve\nLGTM") -> ExecutionResult:
+def _success_result(
+    task_id: str = "T-001", output: str = "verdict: approve\nLGTM"
+) -> ExecutionResult:
     return ExecutionResult(
         task_id=task_id,
         success=True,
@@ -69,12 +71,12 @@ def _orchestrator(runner: TaskRunner | None = None) -> ProjectOrchestrator:
     return ProjectOrchestrator(runner=r)
 
 
-def _setup_graph_with_stage(
-    orch: ProjectOrchestrator, stage_id: str = "S1"
-) -> None:
+def _setup_graph_with_stage(orch: ProjectOrchestrator, stage_id: str = "S1") -> None:
     """Add tasks T-001, T-002 to graph with stage_id and create the stage."""
     orch.graph.add_task(TaskNode(task_id="T-001", stage_id=stage_id))
-    orch.graph.add_task(TaskNode(task_id="T-002", dependencies=frozenset({"T-001"}), stage_id=stage_id))
+    orch.graph.add_task(
+        TaskNode(task_id="T-002", dependencies=frozenset({"T-001"}), stage_id=stage_id)
+    )
     orch.create_stage(stage_id, "Stage 1", ["T-001", "T-002"])
 
 
