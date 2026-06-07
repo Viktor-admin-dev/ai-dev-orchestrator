@@ -113,12 +113,14 @@ class EvidencePack:
                 "failed": self.test_results.failed,
                 "errors": self.test_results.errors,
                 "coverage_pct": self.test_results.coverage_pct,
+                "raw_output": self.test_results.raw_output,
             }
         if self.auditor_verdict is not None:
             data["auditor_verdict"] = {
                 "verdict": self.auditor_verdict.verdict.value,
                 "reasoning": self.auditor_verdict.reasoning,
                 "checklist": self.auditor_verdict.checklist,
+                "raw_response": self.auditor_verdict.raw_response,
             }
         if self.mutation_results is not None:
             data["mutation_results"] = {
@@ -127,9 +129,12 @@ class EvidencePack:
                 "survived": self.mutation_results.survived,
                 "timeout": self.mutation_results.timeout,
                 "score": self.mutation_results.score,
+                "raw_output": self.mutation_results.raw_output,
             }
         if self.plan:
             data["plan"] = self.plan
+        if self.developer_log:
+            data["developer_log"] = list(self.developer_log)
         return json.dumps(data, ensure_ascii=False, indent=2)
 
 
