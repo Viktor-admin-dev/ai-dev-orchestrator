@@ -41,14 +41,39 @@ class AuditorVerdict:
 
 
 @dataclass(frozen=True)
+class MutationResults:
+    """Results of mutation testing on critical modules."""
+
+    total_mutants: int
+    killed: int
+    survived: int
+    timeout: int
+    raw_output: str = ""
+
+    @property
+    def score(self) -> float:
+        """Mutation score as a fraction (0.0–1.0)."""
+        if self.total_mutants == 0:
+            return 1.0
+        return self.killed / self.total_mutants
+
+    @property
+    def acceptable(self) -> bool:
+        """Mutation score >= 0.8 is acceptable."""
+        return self.score >= 0.8
+
+
+@dataclass(frozen=True)
 class EvidencePack:
     """Complete evidence for a task cycle (INV-1, INV-3)."""
 
     task_id: str
     diff: str
     criteria: str
+    plan: str = ""
     test_results: TestResults | None = None
     auditor_verdict: AuditorVerdict | None = None
+    mutation_results: MutationResults | None = None
     developer_log: list[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
@@ -95,6 +120,16 @@ class EvidencePack:
                 "reasoning": self.auditor_verdict.reasoning,
                 "checklist": self.auditor_verdict.checklist,
             }
+        if self.mutation_results is not None:
+            data["mutation_results"] = {
+                "total_mutants": self.mutation_results.total_mutants,
+                "killed": self.mutation_results.killed,
+                "survived": self.mutation_results.survived,
+                "timeout": self.mutation_results.timeout,
+                "score": self.mutation_results.score,
+            }
+        if self.plan:
+            data["plan"] = self.plan
         return json.dumps(data, ensure_ascii=False, indent=2)
 
 

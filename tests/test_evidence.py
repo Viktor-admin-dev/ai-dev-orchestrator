@@ -7,6 +7,7 @@ import json
 from orchestrator.evidence import (
     AuditorVerdict,
     EvidencePack,
+    MutationResults,
     TestResults,
     parse_verdict,
 )
@@ -177,3 +178,55 @@ class TestParseVerdict:
         v = parse_verdict(raw)
         assert v.raw_response == raw
         assert v.reasoning == raw
+
+
+# ── MutationResults ──
+
+
+class TestMutationResults:
+    def test_score_all_killed(self) -> None:
+        mr = MutationResults(total_mutants=10, killed=10, survived=0, timeout=0)
+        assert mr.score == 1.0
+        assert mr.acceptable is True
+
+    def test_score_partial(self) -> None:
+        mr = MutationResults(total_mutants=10, killed=7, survived=3, timeout=0)
+        assert mr.score == 0.7
+        assert mr.acceptable is False
+
+    def test_score_at_threshold(self) -> None:
+        mr = MutationResults(total_mutants=10, killed=8, survived=2, timeout=0)
+        assert mr.score == 0.8
+        assert mr.acceptable is True
+
+    def test_score_zero_mutants(self) -> None:
+        mr = MutationResults(total_mutants=0, killed=0, survived=0, timeout=0)
+        assert mr.score == 1.0
+        assert mr.acceptable is True
+
+    def test_to_json_with_mutation(self) -> None:
+        ep = EvidencePack(
+            task_id="T-001",
+            diff="d",
+            criteria="c",
+            mutation_results=MutationResults(total_mutants=10, killed=9, survived=1, timeout=0),
+        )
+        import json
+
+        data = json.loads(ep.to_json())
+        assert data["mutation_results"]["score"] == 0.9
+        assert data["mutation_results"]["killed"] == 9
+
+    def test_plan_field_in_json(self) -> None:
+        ep = EvidencePack(task_id="T-001", diff="d", criteria="c", plan="Step 1: do X")
+        import json
+
+        data = json.loads(ep.to_json())
+        assert data["plan"] == "Step 1: do X"
+
+    def test_plan_empty_not_in_json(self) -> None:
+        ep = EvidencePack(task_id="T-001", diff="d", criteria="c")
+        import json
+
+        data = json.loads(ep.to_json())
+        assert "plan" not in data

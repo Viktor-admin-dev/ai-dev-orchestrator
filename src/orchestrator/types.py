@@ -22,6 +22,24 @@ class AuditVerdict(Enum):
 
 
 @unique
+class TaskState(Enum):
+    """Task lifecycle state (§3 state machine)."""
+
+    DRAFT = "draft"
+    PLAN_REVIEW = "plan_review"
+    PLAN_APPROVED = "plan_approved"
+    IN_PROGRESS = "in_progress"
+    TESTING = "testing"
+    AWAIT_AUDIT = "await_audit"
+    REWORK = "rework"
+    MUTATION = "mutation"
+    PR_READY = "pr_ready"
+    MERGED = "merged"
+    ACCEPTED = "accepted"
+    FAILED = "failed"
+
+
+@unique
 class ModelId(Enum):
     """Supported Claude model identifiers."""
 
