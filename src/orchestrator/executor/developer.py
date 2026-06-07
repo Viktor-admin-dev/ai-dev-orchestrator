@@ -33,15 +33,31 @@ class DeveloperExecutor:
     def __init__(self, config: ProjectConfig) -> None:
         self._config = config
         self._tool_log = ToolLog()
+        self._critical = False
+
+    def set_critical(self, flag: bool) -> None:
+        """Select the model tier for the next execute() call.
+
+        When *flag* is True the executor uses ``models.developer_critical``
+        (e.g. Opus); otherwise the default ``models.developer`` (Sonnet).
+        The flag is automatically reset to False after execute().
+        """
+        self._critical = flag
 
     @property
     def tool_log(self) -> ToolLog:
         return self._tool_log
 
+    @property
+    def _active_model(self) -> str:
+        if self._critical:
+            return self._config.models.developer_critical
+        return self._config.models.developer
+
     def _build_options(self) -> ClaudeAgentOptions:
         logger_fn = make_tool_logger(self._tool_log)
         return ClaudeAgentOptions(
-            model=self._config.models.developer.value,
+            model=self._active_model,
             system_prompt=_DEVELOPER_SYSTEM_PROMPT,
             allowed_tools=["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
             permission_mode="acceptEdits",
@@ -60,11 +76,13 @@ class DeveloperExecutor:
     async def execute(self, prompt: str, task_id: str) -> ExecutionResult:
         """Run the developer agent and collect results."""
         options = self._build_options()
+        model = self._active_model
+        self._critical = False  # reset after building options
+
         output_parts: list[str] = []
         cost_usd = 0.0
         input_tokens = 0
         output_tokens = 0
-        model = self._config.models.developer.value
         duration_ms = 0
         success = False
 

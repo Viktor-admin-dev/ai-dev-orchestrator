@@ -54,7 +54,7 @@ class TestDeveloperExecutor:
         assert result.success is True
         assert result.cost_usd == pytest.approx(0.35)
         assert result.duration_ms == 2000
-        assert result.model == "claude-sonnet-4-5"
+        assert result.model == "claude-sonnet-4-6"
         mock_query.assert_called_once()
 
     @patch(f"{_P}.query")
@@ -99,7 +99,7 @@ class TestDeveloperExecutor:
         async def gen(**kwargs: Any) -> Any:
             opts = kwargs.get("options")
             assert opts is not None
-            assert opts.model == "claude-sonnet-4-5"
+            assert opts.model == "claude-sonnet-4-6"
             result_msg = MagicMock(spec=mock_rm_cls)
             result_msg.subtype = "success"
             result_msg.total_cost_usd = 0.0
@@ -128,3 +128,76 @@ class TestDeveloperExecutor:
         config = ProjectConfig.from_dict({})
         dev = DeveloperExecutor(config)
         assert isinstance(dev, ExecutorAdapter)
+
+
+class TestCriticalEscalation:
+    def test_set_critical_default_false(self) -> None:
+        config = ProjectConfig.from_dict({})
+        dev = DeveloperExecutor(config)
+        assert dev._critical is False  # noqa: SLF001
+
+    def test_set_critical_true(self) -> None:
+        config = ProjectConfig.from_dict({})
+        dev = DeveloperExecutor(config)
+        dev.set_critical(True)
+        assert dev._active_model == "claude-opus-4-8"  # noqa: SLF001
+
+    def test_set_critical_false(self) -> None:
+        config = ProjectConfig.from_dict({})
+        dev = DeveloperExecutor(config)
+        dev.set_critical(False)
+        assert dev._active_model == "claude-sonnet-4-6"  # noqa: SLF001
+
+    @patch(f"{_P}.query")
+    @patch(f"{_P}.TextBlock", new_callable=_TB)
+    @patch(f"{_P}.AssistantMessage", new_callable=_AM)
+    @patch(f"{_P}.ResultMessage", new_callable=_RM)
+    async def test_critical_model_used_in_options(
+        self,
+        mock_rm_cls: type,
+        mock_am_cls: type,
+        mock_tb_cls: type,
+        mock_query: Any,
+    ) -> None:
+        async def gen(**kwargs: Any) -> Any:
+            opts = kwargs.get("options")
+            assert opts is not None
+            assert opts.model == "claude-opus-4-8"
+            result_msg = MagicMock(spec=mock_rm_cls)
+            result_msg.subtype = "success"
+            result_msg.total_cost_usd = 0.0
+            result_msg.duration_ms = 0
+            yield result_msg
+
+        mock_query.side_effect = gen
+
+        config = ProjectConfig.from_dict({})
+        dev = DeveloperExecutor(config)
+        dev.set_critical(True)
+        await dev.execute("critical task", "T-100")
+
+    @patch(f"{_P}.query")
+    @patch(f"{_P}.TextBlock", new_callable=_TB)
+    @patch(f"{_P}.AssistantMessage", new_callable=_AM)
+    @patch(f"{_P}.ResultMessage", new_callable=_RM)
+    async def test_critical_flag_resets_after_execute(
+        self,
+        mock_rm_cls: type,
+        mock_am_cls: type,
+        mock_tb_cls: type,
+        mock_query: Any,
+    ) -> None:
+        async def gen(**kwargs: Any) -> Any:
+            result_msg = MagicMock(spec=mock_rm_cls)
+            result_msg.subtype = "success"
+            result_msg.total_cost_usd = 0.0
+            result_msg.duration_ms = 0
+            yield result_msg
+
+        mock_query.side_effect = gen
+
+        config = ProjectConfig.from_dict({})
+        dev = DeveloperExecutor(config)
+        dev.set_critical(True)
+        await dev.execute("task", "T-101")
+        assert dev._critical is False  # noqa: SLF001

@@ -318,6 +318,12 @@ def run(
         raise typer.Exit(1)
 
     orch = _load_orchestrator_from_db(real_executors=True)
+
+    # Check vendor independence (SPEC §1)
+    warnings = orch.runner.config.check_vendor_independence()
+    for w in warnings:
+        typer.echo(f"WARNING: {w}", err=True)
+
     result = asyncio.run(run_loop(orch, DB_PATH, auto_approve=auto_approve))
 
     # Save final state

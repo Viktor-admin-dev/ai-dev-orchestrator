@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from orchestrator.types import ModelId, Phase
+from orchestrator.types import Phase, vendor_from_model
 
 
 @dataclass(frozen=True)
@@ -44,8 +44,10 @@ class BudgetsConfig:
 class ModelsConfig:
     """Model assignments for developer and auditor roles."""
 
-    developer: ModelId = ModelId.SONNET
-    auditor: ModelId = ModelId.OPUS
+    developer: str = "claude-sonnet-4-6"
+    developer_critical: str = "claude-opus-4-8"
+    auditor: str = "google/gemini-3.1-pro-preview"
+    auditor_gateway: str = "openrouter"
 
 
 @dataclass(frozen=True)
@@ -77,11 +79,14 @@ class ProjectConfig:
         budgets = BudgetsConfig(**tp["budgets"]) if "budgets" in tp else BudgetsConfig()
 
         models_raw = tp.get("models", {})
-        dev_model = (
-            ModelId(models_raw["developer"]) if "developer" in models_raw else ModelId.SONNET
+        models = ModelsConfig(
+            developer=models_raw.get("developer", ModelsConfig.developer),
+            developer_critical=models_raw.get(
+                "developer_critical", ModelsConfig.developer_critical
+            ),
+            auditor=models_raw.get("auditor", ModelsConfig.auditor),
+            auditor_gateway=models_raw.get("auditor_gateway", ModelsConfig.auditor_gateway),
         )
-        aud_model = ModelId(models_raw["auditor"]) if "auditor" in models_raw else ModelId.OPUS
-        models = ModelsConfig(developer=dev_model, auditor=aud_model)
 
         critical = tp.get("critical_modules", [])
 
@@ -95,3 +100,17 @@ class ProjectConfig:
             models=models,
             critical_modules=tuple(critical),
         )
+
+    def check_vendor_independence(self) -> list[str]:
+        """Check that developer and auditor use different vendors.
+
+        Returns a list of warning messages (empty = OK).
+        """
+        dev_vendor = vendor_from_model(self.models.developer)
+        aud_vendor = vendor_from_model(self.models.auditor)
+        if dev_vendor == aud_vendor:
+            return [
+                f"Audit independence violated: developer ({dev_vendor}) "
+                f"and auditor ({aud_vendor}) are the same vendor"
+            ]
+        return []

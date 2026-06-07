@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -266,3 +266,49 @@ class TestHistoryTracking:
         ctx = r.get_task("T-001")
         # DRAFT → PLAN_REVIEW → PLAN_APPROVED → IN_PROGRESS → TESTING
         assert len(ctx.history) == 4
+
+
+# ── Critical escalation ──
+
+
+class TestCriticalEscalation:
+    async def test_set_critical_called_for_critical_task(self) -> None:
+        """Runner calls set_critical(True) for tasks with touches_critical."""
+        from orchestrator.executor.developer import DeveloperExecutor
+
+        dev = AsyncMock(spec=DeveloperExecutor)
+        dev.execute = AsyncMock(return_value=_success_result(output="+code"))
+        dev.set_critical = MagicMock()
+
+        r = _runner(developer=dev)
+        r.create_task("T-001", touches_critical=True)
+        r.submit_plan("T-001", "P", "C")
+        r.approve_plan("T-001")
+        await r.run_developer("T-001")
+
+        dev.set_critical.assert_called_once_with(True)
+
+    async def test_set_critical_called_false_for_normal_task(self) -> None:
+        """Runner calls set_critical(False) for non-critical tasks."""
+        from orchestrator.executor.developer import DeveloperExecutor
+
+        dev = AsyncMock(spec=DeveloperExecutor)
+        dev.execute = AsyncMock(return_value=_success_result(output="+code"))
+        dev.set_critical = MagicMock()
+
+        r = _runner(developer=dev)
+        r.create_task("T-001", touches_critical=False)
+        r.submit_plan("T-001", "P", "C")
+        r.approve_plan("T-001")
+        await r.run_developer("T-001")
+
+        dev.set_critical.assert_called_once_with(False)
+
+    async def test_mock_executor_without_set_critical(self) -> None:
+        """Plain AsyncMock executor (no set_critical) doesn't break."""
+        r = _runner()  # default mock executor, no set_critical
+        r.create_task("T-001", touches_critical=True)
+        r.submit_plan("T-001", "P", "C")
+        r.approve_plan("T-001")
+        await r.run_developer("T-001")
+        assert r.get_task("T-001").state is TaskState.TESTING

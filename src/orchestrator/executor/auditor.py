@@ -1,21 +1,11 @@
-"""AuditorExecutor — independent code auditor on a different model."""
+"""AuditorExecutor — independent code auditor on a different-vendor model."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    HookMatcher,
-    ResultMessage,
-    TextBlock,
-    query,
-)
-
 from orchestrator.evidence import EvidencePack, parse_verdict
 from orchestrator.executor.base import ExecutionResult
-from orchestrator.executor.hooks import ToolLog, make_tool_logger, readonly_bash
 
 if TYPE_CHECKING:
     from orchestrator.config import ProjectConfig
@@ -40,20 +30,58 @@ verdict: approve | request-changes | reject
 
 
 class AuditorExecutor:
-    """Runs the auditor agent (different model, read-only)."""
+    """Runs the auditor agent (different vendor, read-only).
+
+    When ``auditor_gateway`` is ``"openrouter"``, uses the OpenRouter
+    HTTP client.  Otherwise falls back to Claude Agent SDK (legacy).
+    """
 
     def __init__(self, config: ProjectConfig) -> None:
         self._config = config
-        self._tool_log = ToolLog()
+        self._use_openrouter = config.models.auditor_gateway == "openrouter"
 
     @property
-    def tool_log(self) -> ToolLog:
-        return self._tool_log
+    def model(self) -> str:
+        return self._config.models.auditor
 
-    def _build_options(self) -> ClaudeAgentOptions:
-        logger_fn = make_tool_logger(self._tool_log)
-        return ClaudeAgentOptions(
-            model=self._config.models.auditor.value,
+    async def execute(self, prompt: str, task_id: str) -> ExecutionResult:
+        """Run the auditor agent.
+
+        Prompt should come from ``EvidencePack.to_auditor_input()``.
+        """
+        if self._use_openrouter:
+            return await self._execute_openrouter(prompt, task_id)
+        return await self._execute_agent_sdk(prompt, task_id)
+
+    # ── OpenRouter path ──
+
+    async def _execute_openrouter(self, prompt: str, task_id: str) -> ExecutionResult:
+        from orchestrator.executor.openrouter import OpenRouterClient
+
+        client = OpenRouterClient(
+            model=self._config.models.auditor,
+            system_prompt=_AUDITOR_SYSTEM_PROMPT,
+        )
+        return await client.chat(prompt=prompt, task_id=task_id)
+
+    # ── Agent SDK path (legacy / fallback) ──
+
+    async def _execute_agent_sdk(self, prompt: str, task_id: str) -> ExecutionResult:
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ClaudeAgentOptions,
+            HookMatcher,
+            ResultMessage,
+            TextBlock,
+            query,
+        )
+
+        from orchestrator.executor.hooks import ToolLog, make_tool_logger, readonly_bash
+
+        tool_log = ToolLog()
+        logger_fn = make_tool_logger(tool_log)
+        options = ClaudeAgentOptions(
+            model=self._config.models.auditor,
             system_prompt=_AUDITOR_SYSTEM_PROMPT,
             allowed_tools=["Read", "Glob", "Grep", "Bash"],
             permission_mode="acceptEdits",
@@ -69,14 +97,10 @@ class AuditorExecutor:
             },
         )
 
-    async def execute(self, prompt: str, task_id: str) -> ExecutionResult:
-        """Run the auditor agent. Prompt should come from EvidencePack.to_auditor_input()."""
-        options = self._build_options()
         output_parts: list[str] = []
         cost_usd = 0.0
         input_tokens = 0
         output_tokens = 0
-        model = self._config.models.auditor.value
         duration_ms = 0
         success = False
 
@@ -100,13 +124,15 @@ class AuditorExecutor:
             cost_usd=cost_usd,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            model=model,
-            tool_calls=[dict(e) for e in self._tool_log.entries],
+            model=self._config.models.auditor,
+            tool_calls=[dict(e) for e in tool_log.entries],
             duration_ms=duration_ms,
         )
 
+    # ── Convenience methods ──
+
     async def audit(self, evidence: EvidencePack) -> ExecutionResult:
-        """Convenience: build prompt from evidence and execute.
+        """Build prompt from evidence and execute.
 
         INV-3 enforced: uses to_auditor_input() which excludes developer reasoning.
         """

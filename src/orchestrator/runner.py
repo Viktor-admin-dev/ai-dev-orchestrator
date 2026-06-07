@@ -100,6 +100,9 @@ class TaskRunner:
         prompt = f"## Plan\n{ctx.plan}\n\n## Acceptance Criteria\n{ctx.criteria}"
 
         try:
+            # Escalate to critical model when task touches critical modules
+            if hasattr(self.developer, "set_critical"):
+                self.developer.set_critical(ctx.touches_critical)
             result = await self.developer.execute(prompt, task_id)
             self._record_cost(ctx, result)
 

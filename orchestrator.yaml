@@ -10,5 +10,7 @@ target_project:
     per_task_usd: 5.0
     per_project_usd: 50.0
   models:
-    developer: claude-sonnet-4-5
-    auditor: claude-opus-4-6
+    developer: claude-sonnet-4-6
+    developer_critical: claude-opus-4-8
+    auditor: google/gemini-3.1-pro-preview
+    auditor_gateway: openrouter

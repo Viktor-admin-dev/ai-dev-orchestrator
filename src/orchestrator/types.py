@@ -58,3 +58,18 @@ class ModelId(Enum):
     SONNET = "claude-sonnet-4-5"
     OPUS = "claude-opus-4-6"
     HAIKU = "claude-haiku-4-5-20251001"
+
+
+def vendor_from_model(model: str) -> str:
+    """Extract vendor name from a model identifier string.
+
+    Examples:
+        ``"google/gemini-3.1-pro-preview"`` → ``"google"``
+        ``"anthropic/claude-sonnet-4.6"`` → ``"anthropic"``
+        ``"claude-sonnet-4-6"`` → ``"anthropic"``  (bare Claude ID)
+    """
+    if "/" in model:
+        return model.split("/", 1)[0]
+    if model.startswith("claude-"):
+        return "anthropic"
+    return "unknown"
