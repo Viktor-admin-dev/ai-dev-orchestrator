@@ -62,9 +62,7 @@ class TestInitDb:
         conn = get_connection(p)
         tables = {
             row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         conn.close()
         assert "meta" in tables
@@ -294,34 +292,36 @@ class TestEvidenceFromJson:
         assert ep.developer_log == []
 
     def test_full(self) -> None:
-        raw = json.dumps({
-            "task_id": "T-001",
-            "diff": "d",
-            "criteria": "c",
-            "timestamp": "ts",
-            "plan": "p",
-            "developer_log": ["log1"],
-            "test_results": {
-                "passed": 10,
-                "failed": 0,
-                "errors": 0,
-                "coverage_pct": 90.0,
-                "raw_output": "ok",
-            },
-            "auditor_verdict": {
-                "verdict": "approve",
-                "reasoning": "good",
-                "checklist": {"a": True},
-                "raw_response": "raw",
-            },
-            "mutation_results": {
-                "total_mutants": 10,
-                "killed": 9,
-                "survived": 1,
-                "timeout": 0,
-                "raw_output": "mut",
-            },
-        })
+        raw = json.dumps(
+            {
+                "task_id": "T-001",
+                "diff": "d",
+                "criteria": "c",
+                "timestamp": "ts",
+                "plan": "p",
+                "developer_log": ["log1"],
+                "test_results": {
+                    "passed": 10,
+                    "failed": 0,
+                    "errors": 0,
+                    "coverage_pct": 90.0,
+                    "raw_output": "ok",
+                },
+                "auditor_verdict": {
+                    "verdict": "approve",
+                    "reasoning": "good",
+                    "checklist": {"a": True},
+                    "raw_response": "raw",
+                },
+                "mutation_results": {
+                    "total_mutants": 10,
+                    "killed": 9,
+                    "survived": 1,
+                    "timeout": 0,
+                    "raw_output": "mut",
+                },
+            }
+        )
         ep = _evidence_from_json(raw)
         assert ep.plan == "p"
         assert ep.developer_log == ["log1"]
