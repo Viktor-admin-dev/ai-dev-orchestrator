@@ -59,7 +59,7 @@ def _load_orchestrator_from_db(
 
     config_path = Path("orchestrator.yaml")
     if config_path.exists():
-        config = ProjectConfig.from_yaml(config_path.read_text())
+        config = ProjectConfig.from_yaml(config_path)
     else:
         config = ProjectConfig()
 
