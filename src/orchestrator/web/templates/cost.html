@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Cost Report — Orchestrator{% endblock %}
+{% block content %}
+
+<h1 class="text-xl font-bold mb-6">Cost Report</h1>
+
+{# Total bar #}
+{% if view.budget_usd > 0 %}
+{% set pct = (view.total_usd / view.budget_usd * 100) | round(1) %}
+<div class="mb-8">
+    <div class="flex justify-between text-sm mb-1">
+        <span class="text-gray-400">Total Budget</span>
+        <span>${{ "%.4f" | format(view.total_usd) }} / ${{ "%.2f" | format(view.budget_usd) }} ({{ pct }}%)</span>
+    </div>
+    <div class="w-full bg-gray-800 rounded-full h-3">
+        <div class="h-3 rounded-full {% if pct > 80 %}bg-red-500{% elif pct > 50 %}bg-yellow-500{% else %}bg-green-500{% endif %}"
+             style="width: {{ [pct, 100] | min }}%"></div>
+    </div>
+</div>
+{% endif %}
+
+{# By Model #}
+{% if view.by_model %}
+<h2 class="text-lg font-semibold mb-3">By Model</h2>
+<table class="w-full text-sm mb-8">
+    <thead>
+        <tr class="border-b border-gray-800 text-left text-gray-400">
+            <th class="pb-2 pr-4">Model</th>
+            <th class="pb-2 pr-4 text-right">Cost ($)</th>
+            <th class="pb-2 pr-4 text-right">Input Tokens</th>
+            <th class="pb-2 text-right">Output Tokens</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in view.by_model %}
+        <tr class="border-b border-gray-800/50">
+            <td class="py-2 pr-4 font-mono text-xs">{{ r.model }}</td>
+            <td class="py-2 pr-4 text-right">{{ "%.4f" | format(r.cost_usd) }}</td>
+            <td class="py-2 pr-4 text-right">{{ "{:,}".format(r.input_tokens) }}</td>
+            <td class="py-2 text-right">{{ "{:,}".format(r.output_tokens) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{# By Task #}
+{% if view.by_task %}
+<h2 class="text-lg font-semibold mb-3">By Task</h2>
+<table class="w-full text-sm mb-8">
+    <thead>
+        <tr class="border-b border-gray-800 text-left text-gray-400">
+            <th class="pb-2 pr-4">Task</th>
+            <th class="pb-2 pr-4 text-right">Cost ($)</th>
+            <th class="pb-2 text-right">Budget ($)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in view.by_task %}
+        <tr class="border-b border-gray-800/50">
+            <td class="py-2 pr-4"><a href="/task/{{ r.task_id }}" class="text-blue-400 hover:underline font-mono">{{ r.task_id }}</a></td>
+            <td class="py-2 pr-4 text-right">{{ "%.4f" | format(r.cost_usd) }}</td>
+            <td class="py-2 text-right">{{ "%.2f" | format(r.budget_usd) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{# By Stage #}
+{% if view.by_stage %}
+<h2 class="text-lg font-semibold mb-3">By Stage</h2>
+<table class="w-full text-sm">
+    <thead>
+        <tr class="border-b border-gray-800 text-left text-gray-400">
+            <th class="pb-2 pr-4">Stage</th>
+            <th class="pb-2 pr-4 text-right">Cost ($)</th>
+            <th class="pb-2 text-right">Budget ($)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in view.by_stage %}
+        <tr class="border-b border-gray-800/50">
+            <td class="py-2 pr-4"><a href="/stage/{{ r.stage_id }}" class="text-blue-400 hover:underline font-mono">{{ r.stage_id }}</a></td>
+            <td class="py-2 pr-4 text-right">{{ "%.4f" | format(r.cost_usd) }}</td>
+            <td class="py-2 text-right">{{ "%.2f" | format(r.budget_usd) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

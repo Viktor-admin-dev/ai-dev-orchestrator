@@ -1,0 +1,17 @@
+/* Minimal custom styles for the orchestrator dashboard */
+
+/* Smooth transitions for htmx swaps */
+.htmx-settling {
+    opacity: 0.8;
+}
+
+.htmx-swapping {
+    opacity: 0.5;
+    transition: opacity 200ms ease-out;
+}
+
+/* Form focus ring */
+input:focus, textarea:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}

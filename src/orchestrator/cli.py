@@ -541,6 +541,24 @@ def log(
 
 
 @app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Bind host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Bind port")] = 8080,
+) -> None:
+    """Start the web dashboard server."""
+    import uvicorn  # type: ignore[import-untyped]
+
+    from orchestrator.web.app import create_app
+
+    if not DB_PATH.exists():
+        typer.echo("No database found. Run 'orchestrator init' first.", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Starting dashboard at http://{host}:{port}")
+    uvicorn.run(create_app(DB_PATH), host=host, port=port)
+
+
+@app.command()
 def demo() -> None:
     """Show full demo — all panels with sample data."""
     from rich.console import Console

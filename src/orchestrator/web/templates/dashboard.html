@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Orchestrator{% endblock %}
+{% block content %}
+<div hx-get="/" hx-trigger="every 3s" hx-select="main" hx-target="main" hx-swap="innerHTML">
+
+{% if not view %}
+<div class="text-center py-16 text-gray-500">
+    <p class="text-xl">No database found</p>
+    <p class="mt-2">Run <code class="bg-gray-800 px-2 py-1 rounded">orchestrator init</code> first.</p>
+</div>
+{% else %}
+
+{# Metric cards #}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="bg-gray-900 rounded-lg p-4 border border-gray-800">
+        <div class="text-2xl font-bold">{{ view.total_tasks }}</div>
+        <div class="text-sm text-gray-400">Total Tasks</div>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-4 border border-gray-800">
+        <div class="text-2xl font-bold text-blue-400">{{ view.tasks_in_progress }}</div>
+        <div class="text-sm text-gray-400">In Progress</div>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-4 border border-gray-800">
+        <div class="text-2xl font-bold text-green-400">{{ view.tasks_completed }}</div>
+        <div class="text-sm text-gray-400">Completed</div>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-4 border border-gray-800">
+        <div class="text-2xl font-bold text-red-400">{{ view.tasks_failed }}</div>
+        <div class="text-sm text-gray-400">Failed</div>
+    </div>
+</div>
+
+{# Cost bar #}
+{% if view.cost_budget > 0 %}
+{% set pct = (view.cost_total / view.cost_budget * 100) | round(1) %}
+<div class="mb-8">
+    <div class="flex justify-between text-sm mb-1">
+        <span class="text-gray-400">Budget</span>
+        <span>${{ "%.2f" | format(view.cost_total) }} / ${{ "%.2f" | format(view.cost_budget) }} ({{ pct }}%)</span>
+    </div>
+    <div class="w-full bg-gray-800 rounded-full h-3">
+        <div class="h-3 rounded-full {% if pct > 80 %}bg-red-500{% elif pct > 50 %}bg-yellow-500{% else %}bg-green-500{% endif %}"
+             style="width: {{ [pct, 100] | min }}%"></div>
+    </div>
+</div>
+{% endif %}
+
+{# Stages table #}
+<h2 class="text-lg font-semibold mb-3">Stages</h2>
+<div class="overflow-x-auto">
+<table class="w-full text-sm">
+    <thead>
+        <tr class="border-b border-gray-800 text-left text-gray-400">
+            <th class="pb-2 pr-4">Stage</th>
+            <th class="pb-2 pr-4">Name</th>
+            <th class="pb-2 pr-4">State</th>
+            <th class="pb-2 pr-4 text-right">Tasks</th>
+            <th class="pb-2 pr-4 text-right">Done</th>
+            <th class="pb-2">Approved</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in view.stages %}
+        <tr class="border-b border-gray-800/50 hover:bg-gray-900/50">
+            <td class="py-2 pr-4"><a href="/stage/{{ s.stage_id }}" class="text-blue-400 hover:underline font-mono">{{ s.stage_id }}</a></td>
+            <td class="py-2 pr-4">{{ s.name }}</td>
+            <td class="py-2 pr-4"><span class="px-2 py-0.5 rounded text-xs {{ state_css(s.state) }}">{{ s.state }}</span></td>
+            <td class="py-2 pr-4 text-right">{{ s.task_count }}</td>
+            <td class="py-2 pr-4 text-right">{{ s.tasks_done }}</td>
+            <td class="py-2">{% if s.architect_approved %}yes{% else %}no{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<div class="mt-4 text-sm text-gray-500">
+    {{ view.tasks_ready }} ready, {{ view.tasks_blocked }} blocked
+</div>
+
+{% endif %}
+</div>
+{% endblock %}

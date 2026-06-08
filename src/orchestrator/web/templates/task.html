@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Task {{ view.task_id }} — Orchestrator{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+    <a href="/" class="text-gray-500 hover:text-gray-300 text-sm">&larr; Dashboard</a>
+</div>
+
+<div class="bg-gray-900 rounded-lg p-6 border border-gray-800 mb-6">
+    <h1 class="text-xl font-bold mb-4">Task {{ view.task_id }}</h1>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+        <div>
+            <span class="text-gray-400">State</span>
+            <div class="mt-1"><span class="px-2 py-0.5 rounded text-xs {{ state_css(view.state) }}">{{ view.state }}</span></div>
+        </div>
+        <div>
+            <span class="text-gray-400">Attempt</span>
+            <div class="mt-1">{{ view.attempt }} / {{ view.max_attempts }}</div>
+        </div>
+        <div>
+            <span class="text-gray-400">Critical</span>
+            <div class="mt-1">{% if view.touches_critical %}Yes{% else %}No{% endif %}</div>
+        </div>
+        <div>
+            <span class="text-gray-400">Approved</span>
+            <div class="mt-1">{% if view.architect_approved %}Yes{% else %}No{% endif %}</div>
+        </div>
+    </div>
+
+    {# Cost #}
+    <div class="text-sm mb-4">
+        <span class="text-gray-400">Cost:</span>
+        ${{ "%.4f" | format(view.cost_total) }} / ${{ "%.2f" | format(view.cost_budget) }}
+        <span class="text-gray-500">(${{ "%.4f" | format(view.cost_remaining) }} remaining)</span>
+    </div>
+
+    {% if view.cost_by_model %}
+    <div class="text-sm mb-4">
+        <span class="text-gray-400">By model:</span>
+        {% for model, cost in view.cost_by_model.items() %}
+        <span class="ml-2 text-gray-300">{{ model }}: ${{ "%.4f" | format(cost) }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+{# Plan & Criteria #}
+{% if view.plan %}
+<div class="bg-gray-900 rounded-lg p-6 border border-gray-800 mb-6">
+    <h2 class="text-lg font-semibold mb-2">Plan</h2>
+    <pre class="text-sm text-gray-300 whitespace-pre-wrap">{{ view.plan }}</pre>
+    {% if view.criteria %}
+    <h3 class="text-md font-semibold mt-4 mb-2">Criteria</h3>
+    <pre class="text-sm text-gray-300 whitespace-pre-wrap">{{ view.criteria }}</pre>
+    {% endif %}
+</div>
+{% endif %}
+
+{# Evidence #}
+{% if view.test_results or view.auditor_verdict or view.mutation_results %}
+<div class="bg-gray-900 rounded-lg p-6 border border-gray-800 mb-6">
+    <h2 class="text-lg font-semibold mb-4">Evidence</h2>
+
+    {% if view.test_results %}
+    <div class="mb-3">
+        <h3 class="text-sm text-gray-400 mb-1">Tests</h3>
+        <div class="text-sm {% if view.test_results.all_green %}text-green-400{% else %}text-red-400{% endif %}">
+            {{ view.test_results.passed }} passed, {{ view.test_results.failed }} failed,
+            {{ view.test_results.errors }} errors — {{ "%.1f" | format(view.test_results.coverage_pct) }}% coverage
+        </div>
+    </div>
+    {% endif %}
+
+    {% if view.auditor_verdict %}
+    <div class="mb-3">
+        <h3 class="text-sm text-gray-400 mb-1">Auditor Verdict</h3>
+        <div class="text-sm">
+            <span class="{% if view.auditor_verdict.verdict == 'approve' %}text-green-400{% else %}text-red-400{% endif %}">
+                {{ view.auditor_verdict.verdict }}
+            </span>
+            — {{ view.auditor_verdict.reasoning }}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if view.mutation_results %}
+    <div class="mb-3">
+        <h3 class="text-sm text-gray-400 mb-1">Mutation Testing</h3>
+        <div class="text-sm {% if view.mutation_results.acceptable %}text-green-400{% else %}text-red-400{% endif %}">
+            {{ view.mutation_results.killed }}/{{ view.mutation_results.total_mutants }} killed
+            (score: {{ "%.1f" | format(view.mutation_results.score * 100) }}%)
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{# Timeline #}
+{% if view.history %}
+<div class="bg-gray-900 rounded-lg p-6 border border-gray-800 mb-6">
+    <h2 class="text-lg font-semibold mb-4">Timeline</h2>
+    <div class="space-y-2">
+        {% for h in view.history %}
+        <div class="flex items-center gap-3 text-sm">
+            <span class="text-gray-500 font-mono text-xs w-40 shrink-0">{{ h.timestamp }}</span>
+            <span class="px-2 py-0.5 rounded text-xs {{ state_css(h.from_state) }}">{{ h.from_state }}</span>
+            <span class="text-gray-600">&rarr;</span>
+            <span class="px-2 py-0.5 rounded text-xs {{ state_css(h.to_state) }}">{{ h.to_state }}</span>
+            <span class="text-gray-500">{{ h.reason }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# Developer log #}
+{% if view.developer_log %}
+<div class="bg-gray-900 rounded-lg p-6 border border-gray-800">
+    <h2 class="text-lg font-semibold mb-4">Developer Log</h2>
+    <ul class="space-y-1 text-sm text-gray-300">
+        {% for entry in view.developer_log %}
+        <li class="flex items-start gap-2">
+            <span class="text-gray-600 mt-1">&bull;</span>
+            <span>{{ entry }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% endblock %}
