@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Log {{ view.task_id }} — Orchestrator{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+    <a href="/task/{{ view.task_id }}" class="text-gray-500 hover:text-gray-300 text-sm">&larr; Task {{ view.task_id }}</a>
+</div>
+
+<h1 class="text-xl font-bold mb-2">Task {{ view.task_id }}</h1>
+<div class="mb-6">
+    <span class="px-2 py-0.5 rounded text-xs {{ state_css(view.state) }}">{{ view.state }}</span>
+</div>
+
+{% if view.history %}
+<h2 class="text-lg font-semibold mb-4">Transitions</h2>
+<div class="space-y-2 mb-8">
+    {% for h in view.history %}
+    <div class="flex items-center gap-3 text-sm">
+        <span class="text-gray-500 font-mono text-xs w-40 shrink-0">{{ h.timestamp }}</span>
+        <span class="px-2 py-0.5 rounded text-xs {{ state_css(h.from_state) }}">{{ h.from_state }}</span>
+        <span class="text-gray-600">&rarr;</span>
+        <span class="px-2 py-0.5 rounded text-xs {{ state_css(h.to_state) }}">{{ h.to_state }}</span>
+        <span class="text-gray-500">{{ h.reason }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-gray-500 mb-8">No transitions recorded.</p>
+{% endif %}
+
+{% if view.developer_log %}
+<h2 class="text-lg font-semibold mb-4">Developer Log</h2>
+<ul class="space-y-1 text-sm text-gray-300">
+    {% for entry in view.developer_log %}
+    <li class="flex items-start gap-2">
+        <span class="text-gray-600 mt-1">&bull;</span>
+        <span>{{ entry }}</span>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{% endblock %}
