@@ -546,7 +546,7 @@ def serve(
     port: Annotated[int, typer.Option(help="Bind port")] = 8080,
 ) -> None:
     """Start the web dashboard server."""
-    import uvicorn  # type: ignore[import-untyped]
+    import uvicorn
 
     from orchestrator.web.app import create_app
 
