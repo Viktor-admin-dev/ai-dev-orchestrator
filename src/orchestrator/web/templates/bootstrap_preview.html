@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Bootstrap Preview{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <h1 class="text-2xl font-bold mb-1">{{ result.project_name }}</h1>
+    <p class="text-gray-400 mb-4">{{ result.summary }}</p>
+    <p class="text-xs text-gray-500 mb-6">Model: {{ model }} | Cost: ${{ cost_usd }}</p>
+
+    {% if issues %}
+    <div class="bg-red-900/50 border border-red-700 rounded-lg p-4 mb-6">
+        <p class="text-red-300 text-sm font-medium mb-2">Validation Issues (confirm disabled)</p>
+        <ul class="text-red-200 text-sm list-disc list-inside">
+            {% for issue in issues %}
+            <li>{{ issue }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Stages -->
+    <h2 class="text-lg font-semibold mb-3">Stages ({{ result.stages|length }})</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
+        {% for stage in result.stages %}
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-mono text-blue-400">{{ stage.stage_id }}</span>
+                <span class="text-xs text-gray-500">${{ "%.1f"|format(stage.budget_usd) }}</span>
+            </div>
+            <p class="text-sm text-gray-200">{{ stage.name }}</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Tasks -->
+    <h2 class="text-lg font-semibold mb-3">Tasks ({{ result.tasks|length }})</h2>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-400 border-b border-gray-800">
+                    <th class="py-2 px-3">ID</th>
+                    <th class="py-2 px-3">Stage</th>
+                    <th class="py-2 px-3">Plan</th>
+                    <th class="py-2 px-3">Criteria</th>
+                    <th class="py-2 px-3">Deps</th>
+                    <th class="py-2 px-3">Budget</th>
+                    <th class="py-2 px-3">Critical</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for task in result.tasks %}
+                <tr class="border-b border-gray-800/50 hover:bg-gray-900/50">
+                    <td class="py-2 px-3 font-mono text-blue-400 whitespace-nowrap">{{ task.task_id }}</td>
+                    <td class="py-2 px-3 font-mono text-gray-400 whitespace-nowrap">{{ task.stage_id }}</td>
+                    <td class="py-2 px-3 text-gray-200 max-w-xs truncate" title="{{ task.plan }}">{{ task.plan }}</td>
+                    <td class="py-2 px-3 text-gray-300 max-w-xs truncate" title="{{ task.criteria }}">{{ task.criteria }}</td>
+                    <td class="py-2 px-3 font-mono text-gray-500 whitespace-nowrap">{{ task.dependencies|join(', ') or '—' }}</td>
+                    <td class="py-2 px-3 text-gray-400 whitespace-nowrap">${{ "%.1f"|format(task.budget_usd) }}</td>
+                    <td class="py-2 px-3">
+                        {% if task.touches_critical %}
+                        <span class="text-yellow-400 text-xs">YES</span>
+                        {% else %}
+                        <span class="text-gray-600 text-xs">no</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex gap-3">
+        <form method="post" action="/bootstrap/confirm">
+            <input type="hidden" name="draft_id" value="{{ draft_id }}">
+            <button
+                type="submit"
+                {% if issues %}disabled{% endif %}
+                class="bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+                Confirm & Create
+            </button>
+        </form>
+        <form method="post" action="/bootstrap/discard">
+            <input type="hidden" name="draft_id" value="{{ draft_id }}">
+            <button
+                type="submit"
+                class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+                Discard
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
