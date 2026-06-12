@@ -281,4 +281,126 @@ def build_router(db_path: Path, templates: Jinja2Templates) -> APIRouter:
 
         return RedirectResponse("/", status_code=303)
 
+    # ── Bootstrap routes ──
+
+    @router.get("/bootstrap", response_class=HTMLResponse)
+    async def bootstrap_form(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "bootstrap.html", {"error": None, "spec_text": ""}
+        )
+
+    @router.post("/bootstrap", response_class=HTMLResponse)
+    async def bootstrap_submit(request: Request, spec_text: str = Form(...)) -> HTMLResponse:
+        import json
+        import uuid
+
+        from orchestrator.store import get_connection, init_db, save_bootstrap_draft
+        from orchestrator.web.bootstrap import (
+            decompose_spec,
+            parse_result,
+            validate_result,
+        )
+
+        # Auto-init DB if needed
+        if not db_path.exists():
+            init_db(db_path)
+
+        try:
+            data, cost_usd, model = await decompose_spec(spec_text)
+        except Exception as exc:
+            return templates.TemplateResponse(
+                request,
+                "bootstrap.html",
+                {"error": str(exc), "spec_text": spec_text},
+            )
+
+        result = parse_result(data)
+        issues = validate_result(result)
+
+        draft_id = uuid.uuid4().hex[:12]
+        conn = get_connection(db_path)
+        try:
+            save_bootstrap_draft(conn, draft_id, spec_text, json.dumps(data), model, cost_usd)
+        finally:
+            conn.close()
+
+        return templates.TemplateResponse(
+            request,
+            "bootstrap_preview.html",
+            {
+                "result": result,
+                "issues": issues,
+                "draft_id": draft_id,
+                "model": model,
+                "cost_usd": f"{cost_usd:.4f}",
+            },
+        )
+
+    @router.post("/bootstrap/confirm")
+    async def bootstrap_confirm(draft_id: str = Form(...)) -> RedirectResponse:
+        import json
+
+        from orchestrator.store import (
+            delete_bootstrap_draft,
+            get_connection,
+            init_db,
+            load_bootstrap_draft,
+        )
+        from orchestrator.web.bootstrap import (
+            materialize,
+            parse_result,
+            validate_result,
+        )
+
+        if not db_path.exists():
+            init_db(db_path)
+
+        conn = get_connection(db_path)
+        try:
+            draft = load_bootstrap_draft(conn, draft_id)
+        finally:
+            conn.close()
+
+        if draft is None:
+            raise HTTPException(status_code=404, detail="Draft not found")
+
+        data = json.loads(str(draft["result_json"]))
+        result = parse_result(data)
+        issues = validate_result(result)
+        if issues:
+            raise HTTPException(status_code=400, detail=f"Validation failed: {issues}")
+
+        orch = _load_orch(db_path)
+
+        # Check for duplicate IDs
+        for s in result.stages:
+            if s.stage_id in orch.stage_ids:
+                raise HTTPException(status_code=400, detail=f"Stage '{s.stage_id}' already exists")
+        for t in result.tasks:
+            if t.task_id in orch.runner.task_ids:
+                raise HTTPException(status_code=400, detail=f"Task '{t.task_id}' already exists")
+
+        materialize(result, orch, db_path)
+
+        conn = get_connection(db_path)
+        try:
+            delete_bootstrap_draft(conn, draft_id)
+        finally:
+            conn.close()
+
+        return RedirectResponse("/", status_code=303)
+
+    @router.post("/bootstrap/discard")
+    async def bootstrap_discard(draft_id: str = Form(...)) -> RedirectResponse:
+        from orchestrator.store import delete_bootstrap_draft, get_connection
+
+        if db_path.exists():
+            conn = get_connection(db_path)
+            try:
+                delete_bootstrap_draft(conn, draft_id)
+            finally:
+                conn.close()
+
+        return RedirectResponse("/bootstrap", status_code=303)
+
     return router

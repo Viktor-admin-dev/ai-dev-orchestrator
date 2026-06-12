@@ -95,6 +95,15 @@ CREATE TABLE IF NOT EXISTS cost_entries (
     output_tokens INTEGER NOT NULL,
     cost_usd REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bootstrap_drafts (
+    draft_id TEXT PRIMARY KEY,
+    spec_text TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    cost_usd REAL NOT NULL DEFAULT 0.0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -481,3 +490,68 @@ def load_orchestrator(
     orch._stages = stages
 
     return orch
+
+
+# ── Bootstrap draft persistence ──
+
+_BOOTSTRAP_TABLE_SQL = """\
+CREATE TABLE IF NOT EXISTS bootstrap_drafts (
+    draft_id TEXT PRIMARY KEY,
+    spec_text TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    cost_usd REAL NOT NULL DEFAULT 0.0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+
+def _ensure_bootstrap_table(conn: sqlite3.Connection) -> None:
+    """Create bootstrap_drafts table if it doesn't exist (for existing DBs)."""
+    conn.executescript(_BOOTSTRAP_TABLE_SQL)
+
+
+def save_bootstrap_draft(
+    conn: sqlite3.Connection,
+    draft_id: str,
+    spec_text: str,
+    result_json: str,
+    model: str = "",
+    cost_usd: float = 0.0,
+) -> None:
+    """Save a bootstrap draft (AI decomposition result)."""
+    _ensure_bootstrap_table(conn)
+    conn.execute(
+        """\
+        INSERT INTO bootstrap_drafts (draft_id, spec_text, result_json, model, cost_usd)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(draft_id) DO UPDATE SET
+            spec_text=excluded.spec_text, result_json=excluded.result_json,
+            model=excluded.model, cost_usd=excluded.cost_usd
+        """,
+        (draft_id, spec_text, result_json, model, cost_usd),
+    )
+    conn.commit()
+
+
+def load_bootstrap_draft(conn: sqlite3.Connection, draft_id: str) -> dict[str, str | float] | None:
+    """Load a bootstrap draft by ID. Returns dict or None if not found."""
+    _ensure_bootstrap_table(conn)
+    row = conn.execute("SELECT * FROM bootstrap_drafts WHERE draft_id = ?", (draft_id,)).fetchone()
+    if row is None:
+        return None
+    return {
+        "draft_id": row["draft_id"],
+        "spec_text": row["spec_text"],
+        "result_json": row["result_json"],
+        "model": row["model"],
+        "cost_usd": float(row["cost_usd"]),
+        "created_at": row["created_at"],
+    }
+
+
+def delete_bootstrap_draft(conn: sqlite3.Connection, draft_id: str) -> None:
+    """Delete a bootstrap draft by ID."""
+    _ensure_bootstrap_table(conn)
+    conn.execute("DELETE FROM bootstrap_drafts WHERE draft_id = ?", (draft_id,))
+    conn.commit()

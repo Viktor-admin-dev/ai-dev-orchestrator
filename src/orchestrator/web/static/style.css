@@ -15,3 +15,23 @@ input:focus, textarea:focus, select:focus {
     outline: none;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
 }
+
+/* Bootstrap spinner */
+.bootstrap-spinner {
+    display: inline-flex;
+    align-items: center;
+}
+.bootstrap-spinner.hidden {
+    display: none;
+}
+.spinner-dot {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(59, 130, 246, 0.3);
+    border-top-color: rgb(59, 130, 246);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
