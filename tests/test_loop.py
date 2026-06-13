@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unittest.mock
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
@@ -10,15 +11,16 @@ if TYPE_CHECKING:
 
 import pytest
 
-from orchestrator.config import BudgetsConfig, ProjectConfig
+from orchestrator.config import BudgetsConfig, CommandsConfig, ProjectConfig
 from orchestrator.cost import BudgetExceededError
+from orchestrator.evidence import TestResults
 from orchestrator.executor.base import ExecutionResult, ExecutorAdapter
 from orchestrator.graph import TaskNode
 from orchestrator.loop import run_loop
 from orchestrator.project import ProjectOrchestrator
 from orchestrator.runner import TaskRunner
 from orchestrator.store import get_connection, init_db, load_tasks, save_snapshot
-from orchestrator.types import TaskState
+from orchestrator.types import StageState, TaskState
 
 
 def _config(**overrides: object) -> ProjectConfig:
@@ -298,3 +300,132 @@ class TestPersistence:
         assert "T-001" in orch2.runner.task_ids
         t = orch2.runner.get_task("T-001")
         assert t.state is TaskState.PLAN_REVIEW
+
+
+# ── TestE2E ──
+
+
+def _config_with_commands(**cmd_overrides: str) -> ProjectConfig:
+    defaults: dict[str, object] = {
+        "budgets": BudgetsConfig(per_task_usd=5.0),
+        "commands": CommandsConfig(**cmd_overrides),
+    }
+    return ProjectConfig(**defaults)  # type: ignore[arg-type]
+
+
+def _make_orch_with_commands(
+    cmd_overrides: dict[str, str] | None = None,
+    dev_result: ExecutionResult | None = None,
+    audit_result: ExecutionResult | None = None,
+) -> ProjectOrchestrator:
+    config = _config_with_commands(**(cmd_overrides or {}))
+    dev = AsyncMock(spec=ExecutorAdapter)
+    dev.execute = AsyncMock(return_value=dev_result or _dev_result())
+    aud = AsyncMock(spec=ExecutorAdapter)
+    aud.execute = AsyncMock(return_value=audit_result or _audit_result())
+    runner = TaskRunner(config=config, developer=dev, auditor=aud)
+    return ProjectOrchestrator(runner=runner)
+
+
+def _setup_single_task(orch: ProjectOrchestrator) -> None:
+    """Create a single task T-001 in stage S1 with plan+criteria."""
+    ctx = orch.runner.create_task("T-001", budget_usd=5.0)
+    ctx.plan = "Plan"
+    ctx.criteria = "Criteria"
+    orch.graph.add_task(TaskNode(task_id="T-001", stage_id="S1"))
+    orch.create_stage("S1", "Stage 1", ["T-001"])
+
+
+class TestE2E:
+    async def test_e2e_green_advances_to_review(self, db_path: Path) -> None:
+        """All E2E commands rc=0 → stage reaches REVIEW → ACCEPTED."""
+        orch = _make_orch_with_commands({"test": "echo ok", "lint": "echo ok"})
+        _setup_single_task(orch)
+
+        conn = get_connection(db_path)
+        save_snapshot(conn, orch)
+        conn.close()
+
+        green = TestResults(passed=2, failed=0, errors=0, coverage_pct=0.0)
+        with unittest.mock.patch(
+            "orchestrator.loop._run_e2e_suite",
+            new=AsyncMock(return_value=green),
+        ):
+            result = await run_loop(orch, db_path, auto_approve=True)
+
+        assert result.completed is True
+        assert orch.get_stage("S1").state is StageState.ACCEPTED
+
+    async def test_e2e_test_fail_returns_to_in_progress(self, db_path: Path) -> None:
+        """test command rc=1 → stage returns to IN_PROGRESS."""
+        orch = _make_orch()
+        _setup_single_task(orch)
+
+        conn = get_connection(db_path)
+        save_snapshot(conn, orch)
+        conn.close()
+
+        red = TestResults(passed=0, failed=1, errors=0, coverage_pct=0.0, raw_output="FAILED")
+        green = TestResults(passed=1, failed=0, errors=0, coverage_pct=0.0)
+
+        e2e_mock = AsyncMock(side_effect=[red, green])
+        with unittest.mock.patch("orchestrator.loop._run_e2e_suite", new=e2e_mock):
+            result = await run_loop(orch, db_path, auto_approve=True)
+
+        # First E2E red → IN_PROGRESS, second pass green → REVIEW → ACCEPTED
+        assert result.completed is True
+        assert e2e_mock.await_count == 2
+
+    async def test_e2e_lint_fail_returns_to_in_progress(self, db_path: Path) -> None:
+        """lint command rc=1 → stage returns to IN_PROGRESS."""
+        orch = _make_orch()
+        _setup_single_task(orch)
+
+        conn = get_connection(db_path)
+        save_snapshot(conn, orch)
+        conn.close()
+
+        red = TestResults(passed=1, failed=1, errors=0, coverage_pct=0.0, raw_output="lint error")
+        green = TestResults(passed=2, failed=0, errors=0, coverage_pct=0.0)
+
+        e2e_mock = AsyncMock(side_effect=[red, green])
+        with unittest.mock.patch("orchestrator.loop._run_e2e_suite", new=e2e_mock):
+            result = await run_loop(orch, db_path, auto_approve=True)
+
+        assert result.completed is True
+        assert e2e_mock.await_count == 2
+
+    async def test_e2e_no_commands_auto_green(self, db_path: Path) -> None:
+        """Empty commands → auto-green, backwards compatible."""
+        orch = _make_orch()  # default config has empty commands
+        _setup_single_task(orch)
+
+        conn = get_connection(db_path)
+        save_snapshot(conn, orch)
+        conn.close()
+
+        result = await run_loop(orch, db_path, auto_approve=True)
+        assert result.completed is True
+        assert orch.get_stage("S1").state is StageState.ACCEPTED
+
+    async def test_e2e_results_saved_on_stage(self, db_path: Path) -> None:
+        """E2E results are persisted on StageContext.e2e_results."""
+        orch = _make_orch()
+        _setup_single_task(orch)
+
+        conn = get_connection(db_path)
+        save_snapshot(conn, orch)
+        conn.close()
+
+        green = TestResults(passed=1, failed=0, errors=0, coverage_pct=0.0, raw_output="1 passed")
+        with unittest.mock.patch(
+            "orchestrator.loop._run_e2e_suite",
+            new=AsyncMock(return_value=green),
+        ):
+            await run_loop(orch, db_path, auto_approve=True)
+
+        stage = orch.get_stage("S1")
+        assert stage.e2e_results is not None
+        assert stage.e2e_results.all_green is True
+        assert stage.e2e_results.passed >= 1
+        assert "1 passed" in (stage.e2e_results.raw_output or "")
