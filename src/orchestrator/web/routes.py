@@ -225,6 +225,32 @@ def build_router(db_path: Path, templates: Jinja2Templates) -> APIRouter:
 
         return RedirectResponse("/actions", status_code=303)
 
+    @router.post("/reject-stage/{stage_id}")
+    async def reject_stage(stage_id: str) -> RedirectResponse:
+        from orchestrator.store import get_connection, save_stage, save_stage_transition
+
+        orch = _load_orch(db_path)
+        try:
+            stage_ctx = orch.get_stage(stage_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Stage '{stage_id}' not found") from None
+
+        prev_len = len(stage_ctx.history)
+        try:
+            orch.reject_stage(stage_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        conn = get_connection(db_path)
+        try:
+            for t in stage_ctx.history[prev_len:]:
+                save_stage_transition(conn, stage_id, t)
+            save_stage(conn, stage_ctx)
+        finally:
+            conn.close()
+
+        return RedirectResponse("/actions", status_code=303)
+
     @router.post("/add-task")
     async def add_task_form(
         task_id: str = Form(...),

@@ -9,6 +9,7 @@ Usage:
     orchestrator reject-plan <task_id>      — reject a task plan
     orchestrator accept-task <task_id>      — accept a merged task
     orchestrator accept-stage <stage_id>    — accept a stage in review
+    orchestrator reject-stage <stage_id>    — reject a stage in review
     orchestrator project                    — project overview
     orchestrator stage <id>                 — stage details
     orchestrator task <id>                  — task details
@@ -469,6 +470,38 @@ def accept_stage(
         conn.close()
 
     typer.echo(f"Stage {stage_id} accepted")
+
+
+@app.command("reject-stage")
+def reject_stage(
+    stage_id: Annotated[str, typer.Argument(help="Stage ID (e.g., S1)")],
+) -> None:
+    """Reject a stage in review: REVIEW -> IN_PROGRESS."""
+    from orchestrator.store import get_connection, save_stage, save_stage_transition
+
+    orch = _load_orchestrator_from_db()
+    try:
+        stage_ctx = orch.get_stage(stage_id)
+    except KeyError:
+        typer.echo(f"Stage '{stage_id}' not found", err=True)
+        raise typer.Exit(1) from None
+
+    prev_len = len(stage_ctx.history)
+    try:
+        orch.reject_stage(stage_id)
+    except Exception as exc:
+        typer.echo(f"Cannot reject: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    conn = get_connection(DB_PATH)
+    try:
+        for t in stage_ctx.history[prev_len:]:
+            save_stage_transition(conn, stage_id, t)
+        save_stage(conn, stage_ctx)
+    finally:
+        conn.close()
+
+    typer.echo(f"Stage {stage_id} rejected")
 
 
 # ── Observation panel commands ──

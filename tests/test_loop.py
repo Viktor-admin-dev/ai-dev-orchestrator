@@ -215,6 +215,59 @@ class TestPauseMode:
         assert result.paused is True
         assert orch.runner.get_task("T-001").state is TaskState.MERGED
 
+    async def test_pauses_at_stage_review(self, db_path: Path) -> None:
+        """Default mode should pause at stage REVIEW with accept-stage action."""
+        orch = _make_orch()
+        ctx = orch.runner.create_task("T-001", budget_usd=5.0)
+        ctx.plan = "Plan"
+        ctx.criteria = "Criteria"
+        orch.graph.add_task(TaskNode(task_id="T-001", stage_id="S1"))
+        orch.create_stage("S1", "Stage 1", ["T-001"])
+
+        # Pre-approve plan and pre-accept task to skip those checkpoints
+        orch.runner.submit_plan("T-001", "Plan", "Criteria")
+        orch.runner.approve_plan("T-001")
+
+        conn = get_connection(db_path)
+        save_snapshot(conn, orch)
+        conn.close()
+
+        result = await run_loop(orch, db_path, auto_approve=False)
+        assert result.paused is True
+        assert any("accept-stage S1" in a for a in result.pending_actions)
+        assert orch.get_stage("S1").state is StageState.REVIEW
+
+    async def test_resume_after_stage_reject(self, db_path: Path) -> None:
+        """Reject stage → IN_PROGRESS → tasks re-run → REVIEW → accept → ACCEPTED."""
+        orch = _make_orch()
+        ctx = orch.runner.create_task("T-001", budget_usd=5.0)
+        ctx.plan = "Plan"
+        ctx.criteria = "Criteria"
+        orch.graph.add_task(TaskNode(task_id="T-001", stage_id="S1"))
+        orch.create_stage("S1", "Stage 1", ["T-001"])
+
+        # Pre-approve plan and pre-accept task
+        orch.runner.submit_plan("T-001", "Plan", "Criteria")
+        orch.runner.approve_plan("T-001")
+
+        conn = get_connection(db_path)
+        save_snapshot(conn, orch)
+        conn.close()
+
+        # First run: reaches REVIEW, pauses
+        result1 = await run_loop(orch, db_path, auto_approve=False)
+        assert result1.paused is True
+        assert orch.get_stage("S1").state is StageState.REVIEW
+
+        # Architect rejects
+        orch.reject_stage("S1")
+        assert orch.get_stage("S1").state is StageState.IN_PROGRESS
+
+        # Second run with auto_approve: should re-advance and accept
+        result2 = await run_loop(orch, db_path, auto_approve=True)
+        assert result2.completed is True
+        assert orch.get_stage("S1").state is StageState.ACCEPTED
+
     async def test_resume_after_approve(self, db_path: Path) -> None:
         """After manual approve-plan, run should continue from PLAN_APPROVED."""
         orch = _make_orch()
