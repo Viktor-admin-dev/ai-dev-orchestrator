@@ -98,7 +98,7 @@ async def run_loop(
                             result.tasks_run += 1
 
                     # Check if stage is ready to advance
-                    advanced = _advance_stage(
+                    advanced = await _advance_stage(
                         orch,
                         conn,
                         sid,
@@ -224,7 +224,7 @@ async def _drive_task(
     return made_progress
 
 
-def _advance_stage(
+async def _advance_stage(
     orch: ProjectOrchestrator,
     conn: sqlite3.Connection,
     stage_id: str,
@@ -252,8 +252,8 @@ def _advance_stage(
         save_stage_transition(conn, stage_id, t)
     save_stage(conn, stage_ctx)
 
-    # Auto-submit green E2E results (stub)
-    e2e = TestResults(passed=1, failed=0, errors=0, coverage_pct=100.0)
+    # Run real E2E suite (test + lint + types)
+    e2e = await _run_e2e_suite(orch)
     prev_len = len(stage_ctx.history)
     orch.submit_e2e(stage_id, e2e)
     for t in stage_ctx.history[prev_len:]:
@@ -261,6 +261,20 @@ def _advance_stage(
     save_stage(conn, stage_ctx)
 
     return True
+
+
+async def _run_shell_command(cmd: str) -> tuple[int, str]:
+    """Run a shell command, return (returncode, combined stdout+stderr)."""
+    import asyncio
+
+    proc = await asyncio.create_subprocess_shell(
+        cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    stdout, _ = await proc.communicate()
+    raw = stdout.decode(errors="replace") if stdout else ""
+    return proc.returncode or 0, raw
 
 
 async def _run_test_command(
@@ -277,18 +291,10 @@ async def _run_test_command(
             coverage_pct=100.0,
         )
 
-    import asyncio
-
     try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        stdout, _ = await proc.communicate()
-        raw = stdout.decode(errors="replace") if stdout else ""
+        rc, raw = await _run_shell_command(cmd)
 
-        if proc.returncode == 0:
+        if rc == 0:
             return TestResults(
                 passed=1,
                 failed=0,
@@ -314,6 +320,48 @@ async def _run_test_command(
         )
 
 
+async def _run_e2e_suite(orch: ProjectOrchestrator) -> TestResults:
+    """Run the full E2E suite: test + lint + types."""
+    cmds = orch.runner.config.commands
+    commands = [
+        ("test", cmds.test),
+        ("lint", cmds.lint),
+        ("types", cmds.types),
+    ]
+
+    # No commands configured → auto-green (backwards compat)
+    if not any(cmd for _, cmd in commands):
+        return TestResults(passed=1, failed=0, errors=0, coverage_pct=100.0)
+
+    total_passed = 0
+    total_failed = 0
+    total_errors = 0
+    outputs: list[str] = []
+
+    for label, cmd in commands:
+        if not cmd:
+            continue
+        try:
+            rc, raw = await _run_shell_command(cmd)
+            if rc == 0:
+                total_passed += 1
+            else:
+                total_failed += 1
+            if raw:
+                outputs.append(f"=== {label} (rc={rc}) ===\n{raw}")
+        except Exception as exc:
+            total_errors += 1
+            outputs.append(f"=== {label} (error) ===\n{exc}")
+
+    return TestResults(
+        passed=total_passed,
+        failed=total_failed,
+        errors=total_errors,
+        coverage_pct=0.0,
+        raw_output="\n".join(outputs),
+    )
+
+
 async def _run_mutation_command(
     orch: ProjectOrchestrator,
     task_id: str,
@@ -328,18 +376,10 @@ async def _run_mutation_command(
             timeout=0,
         )
 
-    import asyncio
-
     try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        stdout, _ = await proc.communicate()
-        raw = stdout.decode(errors="replace") if stdout else ""
+        rc, raw = await _run_shell_command(cmd)
 
-        if proc.returncode == 0:
+        if rc == 0:
             return MutationResults(
                 total_mutants=1,
                 killed=1,
