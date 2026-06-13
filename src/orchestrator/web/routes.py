@@ -312,7 +312,44 @@ def build_router(db_path: Path, templates: Jinja2Templates) -> APIRouter:
     @router.get("/bootstrap", response_class=HTMLResponse)
     async def bootstrap_form(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
-            request, "bootstrap.html", {"error": None, "spec_text": ""}
+            request, "bootstrap.html", {"error": None, "spec_text": "", "folder_path": ""}
+        )
+
+    @router.post("/bootstrap/load-folder", response_class=HTMLResponse)
+    async def bootstrap_load_folder(request: Request, folder_path: str = Form(...)) -> HTMLResponse:
+        expanded = Path(folder_path).expanduser().resolve()
+        ctx = {"spec_text": "", "folder_path": folder_path}
+        if not expanded.exists():
+            ctx["error"] = f"Path not found: {folder_path}"
+            return templates.TemplateResponse(
+                request,
+                "bootstrap.html",
+                ctx,
+            )
+        if not expanded.is_dir():
+            ctx["error"] = f"Not a directory: {folder_path}"
+            return templates.TemplateResponse(
+                request,
+                "bootstrap.html",
+                ctx,
+            )
+        md_files = sorted(expanded.glob("*.md"))
+        if not md_files:
+            ctx["error"] = f"No .md files in {folder_path}"
+            return templates.TemplateResponse(
+                request,
+                "bootstrap.html",
+                ctx,
+            )
+        parts: list[str] = []
+        for f in md_files:
+            parts.append(f"--- {f.name} ---")
+            parts.append(f.read_text(encoding="utf-8"))
+        spec_text = "\n\n".join(parts)
+        return templates.TemplateResponse(
+            request,
+            "bootstrap.html",
+            {"error": None, "spec_text": spec_text, "folder_path": folder_path},
         )
 
     @router.post("/bootstrap", response_class=HTMLResponse)
@@ -337,7 +374,7 @@ def build_router(db_path: Path, templates: Jinja2Templates) -> APIRouter:
             return templates.TemplateResponse(
                 request,
                 "bootstrap.html",
-                {"error": str(exc), "spec_text": spec_text},
+                {"error": str(exc), "spec_text": spec_text, "folder_path": ""},
             )
 
         result = parse_result(data)
