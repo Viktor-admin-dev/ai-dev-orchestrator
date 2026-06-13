@@ -2,6 +2,7 @@
 
 Usage:
     orchestrator init                       — create .orchestrator/state.db
+    orchestrator bootstrap <path> [opts]    — decompose specs into stages/tasks
     orchestrator run [--auto-approve]       — start/resume the runner loop
     orchestrator add-task T-001 [options]   — add a task to the database
     orchestrator add-stage S1 "Name" [opt]  — add a stage to the database
@@ -209,6 +210,139 @@ def init() -> None:
         return
     init_db(DB_PATH)
     typer.echo(f"Initialized database at {DB_PATH}")
+
+
+@app.command()
+def bootstrap(
+    path: Annotated[Path, typer.Argument(help="Path to folder with .md spec files")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation")] = False,
+    run_after: Annotated[bool, typer.Option("--run", help="Run loop after bootstrap")] = False,
+    model: Annotated[str, typer.Option(help="Override AI model")] = "",
+) -> None:
+    """Decompose spec files into stages and tasks via AI."""
+    import os
+
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from orchestrator.store import init_db
+    from orchestrator.web.bootstrap import (
+        decompose_spec,
+        materialize,
+        parse_result,
+        validate_result,
+    )
+
+    # Validate path
+    if not path.exists():
+        typer.echo(f"Path not found: {path}", err=True)
+        raise typer.Exit(1)
+    if not path.is_dir():
+        typer.echo(f"Not a directory: {path}", err=True)
+        raise typer.Exit(1)
+
+    # Collect .md files (non-recursive)
+    md_files = sorted(path.glob("*.md"))
+    if not md_files:
+        typer.echo(f"No .md files found in {path}", err=True)
+        raise typer.Exit(1)
+
+    # Concatenate spec files
+    parts: list[str] = []
+    for f in md_files:
+        parts.append(f"--- {f.name} ---")
+        parts.append(f.read_text(encoding="utf-8"))
+    spec_text = "\n\n".join(parts)
+
+    # Auto-init DB
+    init_db(DB_PATH)
+
+    # Override model if specified
+    if model:
+        os.environ["BOOTSTRAP_MODEL"] = model
+
+    # Call AI decomposition
+    typer.echo(f"Decomposing {len(md_files)} spec file(s)...")
+    data, cost_usd, model_used = asyncio.run(decompose_spec(spec_text))
+    result = parse_result(data)
+
+    # Validate
+    issues = validate_result(result)
+
+    # Render preview
+    console = Console()
+
+    info_text = (
+        f"[bold]Project:[/bold] {result.project_name}\n"
+        f"[bold]Summary:[/bold] {result.summary}\n"
+        f"[bold]Model:[/bold] {model_used}\n"
+        f"[bold]Cost:[/bold] ${cost_usd:.4f}"
+    )
+    console.print(Panel(info_text, title="Bootstrap Preview"))
+
+    # Stages table
+    stage_table = Table(title="Stages", show_lines=False)
+    stage_table.add_column("ID", style="cyan")
+    stage_table.add_column("Name")
+    stage_table.add_column("Budget", justify="right")
+    stage_table.add_column("Tasks", justify="right")
+    for s in result.stages:
+        task_count = sum(1 for t in result.tasks if t.stage_id == s.stage_id)
+        stage_table.add_row(s.stage_id, s.name, f"${s.budget_usd:.2f}", str(task_count))
+    console.print(stage_table)
+
+    # Tasks table
+    task_table = Table(title="Tasks", show_lines=False)
+    task_table.add_column("ID", style="cyan")
+    task_table.add_column("Stage", style="dim")
+    task_table.add_column("Plan")
+    task_table.add_column("Budget", justify="right")
+    task_table.add_column("Deps")
+    for t in result.tasks:
+        deps = ", ".join(t.dependencies) if t.dependencies else "—"
+        task_table.add_row(t.task_id, t.stage_id, t.plan[:60], f"${t.budget_usd:.2f}", deps)
+    console.print(task_table)
+
+    # Issues
+    if issues:
+        console.print(f"\n[bold red]Issues ({len(issues)}):[/bold red]")
+        for issue in issues:
+            console.print(f"  [red]• {issue}[/red]")
+        typer.echo("Aborting due to validation issues.", err=True)
+        raise typer.Exit(1)
+    else:
+        console.print("\n[green]No issues found.[/green]")
+
+    # Confirm
+    if not yes:
+        typer.confirm("Create stages and tasks?", abort=True)
+
+    # Materialize
+    orch = _load_orchestrator_from_db()
+    materialize(result, orch, DB_PATH)
+
+    n_stages = len(result.stages)
+    n_tasks = len(result.tasks)
+    typer.echo(f"Created {n_stages} stages, {n_tasks} tasks (${cost_usd:.4f})")
+
+    # Optional: run loop
+    if run_after:
+        from orchestrator.loop import run_loop
+        from orchestrator.store import get_connection, save_snapshot
+
+        orch = _load_orchestrator_from_db(real_executors=True)
+        run_result = asyncio.run(run_loop(orch, DB_PATH, auto_approve=False))
+
+        conn = get_connection(DB_PATH)
+        try:
+            save_snapshot(conn, orch)
+        finally:
+            conn.close()
+
+        if run_result.error:
+            typer.echo(f"Error: {run_result.error}", err=True)
+        typer.echo(f"Tasks run: {run_result.tasks_run}")
 
 
 @app.command("add-task")
